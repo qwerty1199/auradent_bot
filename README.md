@@ -180,14 +180,30 @@ The bot includes comprehensive logging. Logs include:
 
 ## Deployment
 
+### Cloud Deployment (Pella) - Recommended
+
+**Quick Deploy to Pella:**
+[![Deploy to Pella](https://img.shields.io/badge/Deploy%20to-Pella-blue)](https://pella.dev/deploy?repository=https://github.com/qwerty1199/auradent_bot)
+
+For detailed Pella deployment instructions, see [PELLA_DEPLOYMENT.md](PELLA_DEPLOYMENT.md)
+
+**Required Environment Variables for Pella:**
+- `BOT_TOKEN`: Your Telegram bot token
+- `ADMIN_CHAT_ID`: Your Telegram chat ID
+- `WEBHOOK_URL`: Your Pella app URL (e.g., `https://your-app.pella.app`)
+
 ### Local Development
 ```bash
 python bot.py
 ```
 
-### Production Deployment
+### Other Cloud Platforms
 
-For production deployment, consider:
+The bot supports both webhook and polling modes:
+- **Webhook mode**: For cloud platforms (automatic when `WEBHOOK_URL` is set)
+- **Polling mode**: For local development (when `WEBHOOK_URL` is empty)
+
+For production deployment on other platforms, consider:
 
 1. **Process Management**: Use `systemd`, `supervisor`, or `pm2`
 2. **Environment Security**: Secure your `.env` file permissions

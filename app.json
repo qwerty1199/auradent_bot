@@ -1,0 +1,43 @@
+{
+  "name": "AuraDent Telegram Bot",
+  "description": "A Telegram bot for handling dental consultation requests from website forms",
+  "repository": "https://github.com/qwerty1199/auradent_bot",
+  "logo": "https://telegram.org/img/t_logo.png",
+  "keywords": ["telegram", "bot", "dental", "consultation", "excel", "healthcare"],
+  "stack": "container",
+  "env": {
+    "BOT_TOKEN": {
+      "description": "Telegram Bot Token from @BotFather",
+      "required": true
+    },
+    "ADMIN_CHAT_ID": {
+      "description": "Your Telegram Chat ID for admin access",
+      "required": true
+    },
+    "WEBHOOK_URL": {
+      "description": "Webhook URL for the bot (will be set automatically by Pella)",
+      "required": false
+    },
+    "EXCEL_FILE_PATH": {
+      "description": "Path to store consultation Excel file",
+      "value": "consultations.xlsx",
+      "required": false
+    },
+    "LOG_LEVEL": {
+      "description": "Logging level for the application",
+      "value": "INFO",
+      "required": false
+    }
+  },
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "eco"
+    }
+  },
+  "buildpacks": [
+    {
+      "url": "heroku/python"
+    }
+  ]
+}

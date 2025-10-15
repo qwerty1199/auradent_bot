@@ -32,6 +32,11 @@ ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID')
 EXCEL_FILE_PATH = os.getenv('EXCEL_FILE_PATH', 'consultations.xlsx')
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 
+# Webhook configuration for cloud hosting
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')
+PORT = int(os.getenv('PORT', 8443))
+WEBHOOK_PATH = f"/{BOT_TOKEN}"
+
 # Setup logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -367,9 +372,21 @@ def main() -> None:
     # Handle all text messages as potential consultation requests
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_consultation_message))
     
-    # Run the bot until the user presses Ctrl-C
-    logger.info("Starting AuraDent Bot...")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    # Determine if we're running on a cloud platform or locally
+    if WEBHOOK_URL:
+        # Cloud hosting mode with webhooks
+        logger.info("Starting AuraDent Bot in webhook mode...")
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=PORT,
+            webhook_url=f"{WEBHOOK_URL}{WEBHOOK_PATH}",
+            url_path=WEBHOOK_PATH,
+            allowed_updates=Update.ALL_TYPES
+        )
+    else:
+        # Local development mode with polling
+        logger.info("Starting AuraDent Bot in polling mode...")
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == '__main__':
