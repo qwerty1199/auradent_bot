@@ -145,23 +145,60 @@ consultation_manager = ConsultationManager(EXCEL_FILE_PATH)
 def parse_consultation_message(message_text: str) -> Optional[Dict[str, Any]]:
     """
     Parse consultation request from message text
-    Expected format: JSON or key-value pairs
+    Expected format: 
+    New Consultation Request
+    Name: Patient Name
+    Email: patient@email.com
+    Phone: 1234567890
+    Message: Optional message (optional)
+    Date: Optional date (optional)
     """
     try:
         # Try to parse as JSON first
         if message_text.strip().startswith('{'):
             return json.loads(message_text)
         
-        # Parse as key-value pairs (form-like format)
-        consultation_data = {}
+        # Check if it starts with "New Consultation Request"
         lines = message_text.strip().split('\n')
         
-        for line in lines:
+        # Skip the first line if it's "New Consultation Request"
+        start_index = 0
+        if lines and lines[0].strip().lower() in ['new consultation request', 'consultation request']:
+            start_index = 1
+        
+        consultation_data = {}
+        
+        # Parse key-value pairs
+        for i in range(start_index, len(lines)):
+            line = lines[i].strip()
             if ':' in line:
                 key, value = line.split(':', 1)
-                key = key.strip().lower().replace(' ', '_')
+                key = key.strip().lower()
                 value = value.strip()
-                consultation_data[key] = value
+                
+                # Skip empty values
+                if not value:
+                    continue
+                
+                # Map keys to standardized names
+                key_mapping = {
+                    'name': 'name',
+                    'email': 'email', 
+                    'phone': 'phone',
+                    'message': 'message',
+                    'date': 'date',
+                    'consultation type': 'consultation_type',
+                    'age': 'age'
+                }
+                
+                mapped_key = key_mapping.get(key, key.replace(' ', '_'))
+                consultation_data[mapped_key] = value
+        
+        # Validate required fields (name, email, phone)
+        required_fields = ['name', 'email', 'phone']
+        if not all(field in consultation_data for field in required_fields):
+            logger.warning(f"Missing required fields in consultation: {consultation_data}")
+            return None
         
         return consultation_data if consultation_data else None
         
@@ -178,12 +215,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"🦷 Welcome to AuraDent Bot!\n\n"
         f"This bot handles dental consultation requests. "
         f"Send consultation data in the following format:\n\n"
-        f"<code>Name: John Doe\n"
-        f"Phone: +1234567890\n"
-        f"Email: john@example.com\n"
-        f"Age: 30\n"
-        f"Consultation Type: General Checkup\n"
-        f"Message: I need a dental consultation</code>\n\n"
+        f"<code>New Consultation Request\n"
+        f"Name: Eugeniu Buzila\n"
+        f"Email: eugeniubuzila11@gmail.com\n"
+        f"Phone: 3886356363\n"
+        f"Message: Your message here (optional)\n"
+        f"Date: Sat Oct 18 2025 (optional)</code>\n\n"
         f"Admins can use /get_consultations to download the Excel file.",
         reply_markup=ForceReply(selective=True),
     )
@@ -197,6 +234,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 *Available Commands:*
 /start - Start the bot and see instructions
 /help - Show this help message
+/myid - Show your user ID for admin setup
 /get_consultations - Download Excel file with all consultations (admin only)
 /stats - Show consultation statistics
 
@@ -204,23 +242,25 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 Send a message with consultation details in this format:
 
 ```
-Name: Patient Name
-Phone: +1234567890
-Email: patient@example.com
-Age: 30
-Consultation Type: General Checkup
-Message: Detailed consultation request
+New Consultation Request
+Name: Eugeniu Buzila
+Email: eugeniubuzila11@gmail.com
+Phone: 3886356363
+Message: Your message here (optional)
+Date: Sat Oct 18 2025 (optional)
 ```
+
+*Required fields:* Name, Email, Phone
+*Optional fields:* Message, Date
 
 *JSON Format is also supported:*
 ```json
 {
     "name": "Patient Name",
-    "phone": "+1234567890", 
-    "email": "patient@example.com",
-    "age": "30",
-    "consultation_type": "General Checkup",
-    "message": "Detailed consultation request"
+    "email": "patient@email.com",
+    "phone": "1234567890",
+    "message": "Optional message",
+    "date": "Optional date"
 }
 ```
     """
@@ -230,10 +270,29 @@ Message: Detailed consultation request
 async def get_consultations(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send the Excel file with all consultations (admin only)."""
     chat_id = str(update.effective_chat.id)
+    user_id = str(update.effective_user.id)
     
-    # Check if user is admin
-    if ADMIN_CHAT_ID and chat_id != ADMIN_CHAT_ID:
-        await update.message.reply_text("❌ Access denied. This command is for authorized users only.")
+    # Debug info
+    logger.info(f"get_consultations called - Chat ID: {chat_id}, User ID: {user_id}, Admin ID: {ADMIN_CHAT_ID}")
+    
+    # Check if user is admin (check both user ID and chat ID for flexibility)
+    if ADMIN_CHAT_ID and user_id != ADMIN_CHAT_ID and chat_id != ADMIN_CHAT_ID:
+        await update.message.reply_text(
+            f"❌ Access denied. This command is for authorized users only.\n"
+            f"Your User ID: {user_id}\n"
+            f"Chat ID: {chat_id}\n"
+            f"Use /myid in a private chat with the bot to get your correct ID."
+        )
+        return
+    
+    # If ADMIN_CHAT_ID is not set, show setup instructions
+    if not ADMIN_CHAT_ID:
+        await update.message.reply_text(
+            f"⚙️ Admin access not configured.\n"
+            f"Your User ID: {user_id}\n"
+            f"Chat ID: {chat_id}\n\n"
+            f"Set ADMIN_CHAT_ID={user_id} in your environment variables."
+        )
         return
     
     try:
@@ -245,6 +304,7 @@ async def get_consultations(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         
         # Get consultation count
         count = consultation_manager.get_consultation_count()
+        logger.info(f"Excel file exists: {excel_path.exists()}, Consultation count: {count}")
         
         # Send the Excel file
         with open(excel_path, 'rb') as file:
@@ -284,6 +344,34 @@ Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         await update.message.reply_text("❌ Error retrieving statistics.")
 
 
+async def myid_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show user and chat IDs for admin setup."""
+    chat_id = str(update.effective_chat.id)
+    user_id = str(update.effective_user.id)
+    user = update.effective_user
+    chat = update.effective_chat
+    
+    # Determine chat type
+    chat_type = "Private" if chat.type == 'private' else f"Group ({chat.type})"
+    
+    id_text = f"""
+🆔 *Your Information*
+
+**User ID:** `{user_id}`
+**Chat ID:** `{chat_id}`
+**Chat Type:** {chat_type}
+**Username:** @{user.username if user.username else 'Not set'}
+**Name:** {user.full_name}
+
+*For admin setup, use your User ID:*
+`ADMIN_CHAT_ID={user_id}`
+
+*Current admin ID:* `{ADMIN_CHAT_ID if ADMIN_CHAT_ID else 'Not set'}`
+    """
+    
+    await update.message.reply_text(id_text, parse_mode='Markdown')
+
+
 async def handle_consultation_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle incoming consultation request messages."""
     try:
@@ -295,8 +383,15 @@ async def handle_consultation_message(update: Update, context: ContextTypes.DEFA
         
         if not consultation_data:
             await update.message.reply_text(
-                "❌ Unable to parse consultation request. Please check the format.\n"
-                "Use /help to see the expected format."
+                "❌ Unable to parse consultation request. Please check the format.\n\n"
+                "Required format:\n"
+                "New Consultation Request\n"
+                "Name: Your Name\n"
+                "Email: your@email.com\n"
+                "Phone: Your Phone\n"
+                "Message: Optional message\n"
+                "Date: Optional date\n\n"
+                "Use /help to see more details."
             )
             return
         
@@ -304,34 +399,43 @@ async def handle_consultation_message(update: Update, context: ContextTypes.DEFA
         consultation_data['chat_id'] = chat_id
         
         # Add to Excel
+        logger.info(f"Processing consultation from chat {chat_id}: {consultation_data.get('name', 'Unknown')}")
         success = consultation_manager.add_consultation(consultation_data)
         
         if success:
+            logger.info(f"Successfully added consultation to Excel")
             # Send confirmation
             name = consultation_data.get('name', 'Unknown')
-            await update.message.reply_text(
-                f"✅ Consultation request received!\n\n"
-                f"👤 Patient: {name}\n"
-                f"📞 Phone: {consultation_data.get('phone', 'Not provided')}\n"
-                f"📧 Email: {consultation_data.get('email', 'Not provided')}\n"
-                f"🎂 Age: {consultation_data.get('age', 'Not provided')}\n"
-                f"🦷 Type: {consultation_data.get('consultation_type', 'General')}\n\n"
-                f"Your request has been saved and our team will contact you soon!"
-            )
+            response_text = f"✅ Consultation request received!\n\n"
+            response_text += f"👤 Patient: {name}\n"
+            response_text += f"📞 Phone: {consultation_data.get('phone', 'Not provided')}\n"
+            response_text += f"📧 Email: {consultation_data.get('email', 'Not provided')}\n"
+            
+            # Add optional fields if they exist
+            if consultation_data.get('message'):
+                response_text += f"💬 Message: {consultation_data.get('message')}\n"
+            if consultation_data.get('date'):
+                response_text += f"📅 Date: {consultation_data.get('date')}\n"
+            
+            response_text += f"\nYour request has been saved and our team will contact you soon!"
+            
+            await update.message.reply_text(response_text)
             
             # Notify admin if configured
             if ADMIN_CHAT_ID and ADMIN_CHAT_ID != chat_id:
-                admin_notification = (
-                    f"🔔 *New Consultation Request*\n\n"
-                    f"👤 *Name:* {name}\n"
-                    f"📞 *Phone:* {consultation_data.get('phone', 'Not provided')}\n"
-                    f"📧 *Email:* {consultation_data.get('email', 'Not provided')}\n"
-                    f"🎂 *Age:* {consultation_data.get('age', 'Not provided')}\n"
-                    f"🦷 *Type:* {consultation_data.get('consultation_type', 'General')}\n"
-                    f"💬 *Message:* {consultation_data.get('message', 'No message')}\n"
-                    f"📱 *Chat ID:* {chat_id}\n"
-                    f"⏰ *Time:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-                )
+                admin_notification = f"🔔 *New Consultation Request*\n\n"
+                admin_notification += f"👤 *Name:* {name}\n"
+                admin_notification += f"📞 *Phone:* {consultation_data.get('phone', 'Not provided')}\n"
+                admin_notification += f"📧 *Email:* {consultation_data.get('email', 'Not provided')}\n"
+                
+                # Add optional fields if they exist
+                if consultation_data.get('message'):
+                    admin_notification += f"💬 *Message:* {consultation_data.get('message')}\n"
+                if consultation_data.get('date'):
+                    admin_notification += f"� *Date:* {consultation_data.get('date')}\n"
+                
+                admin_notification += f"📱 *Chat ID:* {chat_id}\n"
+                admin_notification += f"⏰ *Time:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
                 
                 try:
                     await context.bot.send_message(
@@ -366,6 +470,7 @@ def main() -> None:
     # Register handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("myid", myid_command))
     application.add_handler(CommandHandler("get_consultations", get_consultations))
     application.add_handler(CommandHandler("stats", stats_command))
     
